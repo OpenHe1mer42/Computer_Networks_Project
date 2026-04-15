@@ -1,0 +1,23 @@
+{
+  "name": "rrjeta-sockets",
+  "version": "0.1.0",
+  "description": "Modular Node.js socket client/server project for Computer Networks Project 2",
+  "private": true,
+  "scripts": {
+    "server": "node src/server/index.js",
+    "client": "node src/client/index.js",
+    "dev:server": "node --watch src/server/index.js",
+    "dev:client": "node --watch src/client/index.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}
