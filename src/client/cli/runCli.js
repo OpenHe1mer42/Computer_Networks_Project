@@ -79,6 +79,177 @@ export async function runCli({ client, localFileService }) {
         break;
     }
 
-
+    if (interactive) {
+      readlineInterface.prompt();
+    }
   }
-} 
+ client.on('frame', (frame) => {
+    frameQueue = frameQueue
+      .then(() => handleServerFrame(frame))
+      .catch((error) => {
+        printLine(`\[client:error] ${error.message}`);
+      });
+  });
+
+  client.on('connected', () => {
+    printLine('[client] Connected. Sending hello frame.');
+    if (interactive) {
+      readlineInterface.prompt();
+    }
+  });
+
+  client.on('disconnected', ({ reconnecting }) => {
+    printLine(reconnecting
+      ? '[client] Disconnected. Reconnect is enabled.'
+      : '[client] Disconnected.');
+
+    if (interactive) {
+      readlineInterface.prompt();
+    }
+  });
+
+  client.on('reconnect_scheduled', ({ attempt }) => {
+    printLine(`\[client] Reconnect attempt ${attempt} starting.`);
+  });
+
+  client.on('error', (error) => {
+    printLine(`\[client:error] ${error.message}`);
+    if (interactive) {
+      readlineInterface.prompt();
+    }
+  });
+
+  client.connect();
+
+  if (interactive) {
+    printHelp();
+    readlineInterface.setPrompt('socket> ');
+    readlineInterface.prompt();
+  }
+
+  async function handleInputLine(line) {
+    const input = line.trim();
+
+    if (!input) {
+      if (interactive) {
+        readlineInterface.prompt();
+      }
+      return;
+    }
+
+    if (!input.startsWith('/')) {
+      const sent = client.send({
+        type: 'chat',
+        text: input,
+      });
+
+      if (!sent) {
+        printLine('[client:error] Client is not currently connected.');
+      }
+
+      if (interactive) {
+        readlineInterface.prompt();
+      }
+      return;
+    }
+
+    const { command, args } = parseCommand(input.slice(1));
+
+    try {
+      switch (command) {
+        case 'help':
+          printHelp();
+          break;
+        case 'list':
+          client.send({
+            type: 'command',
+            command: 'list',
+            path: args[0] ?? '.',
+          });
+          break;
+        case 'read':
+          client.send({
+            type: 'command',
+            command: 'read',
+            filename: args[0],
+          });
+          break;
+        case 'search':
+          client.send({
+            type: 'command',
+            command: 'search',
+            keyword: args.join(' '),
+          });
+          break;
+        case 'info':
+          client.send({
+            type: 'command',
+            command: 'info',
+            filename: args[0],
+          });
+          break;
+        case 'upload': {
+          const filename = args[0];
+          const upload = await localFileService.readUpload(filename);
+          client.send({
+            type: 'command',
+            command: 'upload',
+            filename,
+            contentBase64: upload.contentBase64,
+          });
+          printLine(`\[client] Upload queued for ${filename}.`);
+          break;
+        }
+        case 'download':
+          client.send({
+            type: 'command',
+            command: 'download',
+            filename: args[0],
+          });
+          break;
+        case 'delete':
+          client.send({
+            type: 'command',
+            command: 'delete',
+            filename: args[0],
+          });
+          break;
+        case 'quit':
+          client.disconnect();
+          readlineInterface.close();
+          return;
+        default:
+          printLine(`\[client:error] Unknown command "${command}".`);
+          break;
+      }
+    } catch (error) {
+      printLine(`\[client:error] ${error.message}`);
+    }
+
+    if (interactive) {
+      readlineInterface.prompt();
+    }
+  }
+
+  readlineInterface.on('line', (line) => {
+    inputQueue = inputQueue
+      .then(() => handleInputLine(line))
+      .catch((error) => {
+        printLine(`\[client:error] ${error.message}`);
+      });
+  });
+
+  readlineInterface.on('close', () => {
+    if (interactive) {
+      process.exit(0);
+      return;
+    }
+
+    setTimeout(() => {
+      client.disconnect();
+      process.exit(0);
+    }, 1200);
+  });
+}
+
+
