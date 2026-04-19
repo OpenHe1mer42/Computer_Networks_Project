@@ -103,3 +103,39 @@ export class FileService {
       deleted: true,
     };
   }
+
+  async search(keyword, relativePath = '.') {
+    if (!keyword || !keyword.trim()) {
+      throw new Error('A search keyword is required.');
+    }
+
+    const directoryPath = resolveSafePath(this.baseDir, relativePath);
+    const entries = await walkDirectory(directoryPath);
+    const matches = entries
+      .filter(({ dirent }) => dirent.name.toLowerCase().includes(keyword.toLowerCase()))
+      .map(({ absolutePath, dirent }) => ({
+        name: dirent.name,
+        path: toPortableRelativePath(this.baseDir, absolutePath),
+        type: dirent.isDirectory() ? 'directory' : 'file',
+      }));
+
+    return {
+      keyword,
+      path: toPortableRelativePath(this.baseDir, directoryPath),
+      matches,
+    };
+  }
+
+  async info(relativePath) {
+    const filePath = resolveSafePath(this.baseDir, relativePath);
+    const stats = await fs.stat(filePath);
+
+    return {
+      path: toPortableRelativePath(this.baseDir, filePath),
+      type: stats.isDirectory() ? 'directory' : 'file',
+      size: stats.size,
+      createdAt: stats.birthtime.toISOString(),
+      modifiedAt: stats.mtime.toISOString(),
+    };
+  }
+}
