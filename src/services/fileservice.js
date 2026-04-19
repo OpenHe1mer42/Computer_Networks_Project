@@ -77,3 +77,29 @@ export class FileService {
 
     const fileBuffer = Buffer.from(contentBase64, 'base64');
     await fs.writeFile(filePath, fileBuffer);
+    return {
+      path: toPortableRelativePath(this.baseDir, filePath),
+      size: fileBuffer.length,
+    };
+  }
+
+  async download(relativePath) {
+    const filePath = resolveSafePath(this.baseDir, relativePath);
+    const fileBuffer = await fs.readFile(filePath);
+
+    return {
+      path: toPortableRelativePath(this.baseDir, filePath),
+      size: fileBuffer.length,
+      contentBase64: fileBuffer.toString('base64'),
+    };
+  }
+
+  async delete(relativePath) {
+    const filePath = resolveSafePath(this.baseDir, relativePath);
+    await fs.unlink(filePath);
+
+    return {
+      path: toPortableRelativePath(this.baseDir, filePath),
+      deleted: true,
+    };
+  }
