@@ -56,3 +56,24 @@ export class FileService {
       entries,
     };
   }
+   async read(relativePath) {
+    const filePath = resolveSafePath(this.baseDir, relativePath);
+    const stats = await fs.stat(filePath);
+
+    if (!stats.isFile()) {
+      throw new Error('Target is not a file.');
+    }
+
+    return {
+      path: toPortableRelativePath(this.baseDir, filePath),
+      size: stats.size,
+      content: await fs.readFile(filePath, 'utf8'),
+    };
+  }
+
+  async upload(relativePath, contentBase64) {
+    const filePath = resolveSafePath(this.baseDir, relativePath);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+
+    const fileBuffer = Buffer.from(contentBase64, 'base64');
+    await fs.writeFile(filePath, fileBuffer);
