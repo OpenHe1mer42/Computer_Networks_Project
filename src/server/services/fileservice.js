@@ -56,7 +56,8 @@ export class FileService {
       entries,
     };
   }
-   async read(relativePath) {
+
+  async read(relativePath) {
     const filePath = resolveSafePath(this.baseDir, relativePath);
     const stats = await fs.stat(filePath);
 
@@ -77,6 +78,7 @@ export class FileService {
 
     const fileBuffer = Buffer.from(contentBase64, 'base64');
     await fs.writeFile(filePath, fileBuffer);
+
     return {
       path: toPortableRelativePath(this.baseDir, filePath),
       size: fileBuffer.length,

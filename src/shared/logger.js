@@ -17,7 +17,12 @@ function normalizeMeta(meta) {
   return meta;
 }
 
-export function createLogger({ name, logFile }) {
+export function createLogger({
+  name,
+  logFile,
+  consoleOutput = true,
+  onEntry,
+}) {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
 
   function write(level, message, meta) {
@@ -30,8 +35,14 @@ export function createLogger({ name, logFile }) {
     };
 
     const line = JSON.stringify(entry);
-    const output = level === 'error' ? console.error : console.log;
-    output(line);
+    if (consoleOutput) {
+      const output = level === 'error' ? console.error : console.log;
+      output(line);
+    }
+
+    if (onEntry) {
+      onEntry(entry);
+    }
 
     try {
       fs.appendFileSync(logFile, `${line}\n`, 'utf8');
