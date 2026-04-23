@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Socket Server Health</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/dashboard.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">HTTP monitor</p>
+          <h1>Socket Server Health</h1>
+        </div>
+        <div class="status" id="connectionStatus">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">Loading</span>
+        </div>
+      </header>
+
+      <section class="metrics" aria-label="Server metrics">
+        <article class="metric">
+          <span class="metric-label">Active Clients</span>
+          <strong id="activeConnections">0</strong>
+          <small id="clientIps">No connected clients</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Total Connections</span>
+          <strong id="totalConnectionsSeen">0</strong>
+          <small>Connections since server start</small>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Messages</span>
+          <strong id="messageCount">0</strong>
+          <small id="lastUpdated">Waiting for stats</small>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Active Clients</h2>
+            <span id="activeClientCount" class="count-pill">0</span>
+          </div>
+          <div id="activeClients" class="list empty">No active clients</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Known Clients</h2>
+            <span id="knownClientCount" class="count-pill">0</span>
+          </div>
+          <div id="knownClients" class="list empty">No known clients yet</div>
+        </section>
+      </section>
+
+      <section class="panel recent-panel">
+        <div class="panel-heading">
+          <h2>Recent Messages</h2>
+          <span id="recentMessageCount" class="count-pill">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Client</th>
+                <th>Role</th>
+                <th>Type</th>
+                <th>Preview</th>
+              </tr>
+            </thead>
+            <tbody id="recentMessages">
+              <tr>
+                <td colspan="5" class="empty-cell">No recent messages</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

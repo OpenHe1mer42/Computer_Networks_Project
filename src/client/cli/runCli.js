@@ -1,5 +1,7 @@
 import readline from 'node:readline';
 
+import { ClientTerminal, formatServerFrame } from './clientTerminal.js';
+
 function printLine(message) {
   process.stdout.write(`${message}\n`);
 }
@@ -43,97 +45,111 @@ export async function runCli({ client, localFileService }) {
 
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const readlineInterface = createReadline();
+  const terminal = new ClientTerminal({
+    interactive,
+    readlineInterface,
+  });
   let frameQueue = Promise.resolve();
   let inputQueue = Promise.resolve();
 
   async function handleServerFrame(frame) {
     switch (frame.type) {
       case 'hello_ack':
-        printLine(`[server] ${frame.message} clientId=${frame.clientId} role=${frame.role} reconnectCount=${frame.reconnectCount}`);
+        terminal.setConnection({
+          connected: true,
+          text: 'connected',
+          clientId: frame.clientId,
+          role: frame.role,
+        });
+        terminal.addEvent('info', formatServerFrame(frame));
         break;
       case 'ack':
-        printLine(`[server] ${frame.message}`);
+        terminal.addEvent('info', formatServerFrame(frame));
         break;
       case 'command_result':
         if (!frame.ok) {
-          printLine(`[server:error] ${frame.error}`);
+          terminal.finishCommandError(frame);
+          if (!interactive) {
+            printLine(formatServerFrame(frame));
+          }
           break;
         }
 
         if (frame.command === 'download') {
           const savedFile = await localFileService.writeDownload(frame.data.path, frame.data.contentBase64);
-          printLine(`[server] Download saved to ${savedFile.filePath}`);
+          const message = formatServerFrame(frame, savedFile.filePath);
+          terminal.finishCommand(frame, `Download saved to ${savedFile.filePath}`);
+          if (!interactive) {
+            printLine(message);
+          }
           break;
         }
 
-        printLine(`[server] ${frame.command} result:\n${formatPayload(frame.data)}`);
+        terminal.finishCommand(frame, formatPayload(frame.data));
+        if (!interactive) {
+          printLine(formatServerFrame(frame));
+        }
         break;
       case 'error':
-        printLine(`[server:error] ${frame.message}`);
+        terminal.addEvent('error', formatServerFrame(frame));
         break;
       case 'system':
-        printLine(`[server:system] ${frame.message}`);
+        terminal.addEvent('info', formatServerFrame(frame));
         break;
       default:
-        printLine(`[server] ${formatPayload(frame)}`);
+        terminal.addEvent('info', formatServerFrame(frame));
         break;
     }
-
-    if (interactive) {
-      readlineInterface.prompt();
-    }
   }
- client.on('frame', (frame) => {
+
+  client.on('frame', (frame) => {
     frameQueue = frameQueue
       .then(() => handleServerFrame(frame))
       .catch((error) => {
-        printLine(`\[client:error] ${error.message}`);
+        terminal.addEvent('error', `[client:error] ${error.message}`);
       });
   });
 
   client.on('connected', () => {
-    printLine('[client] Connected. Sending hello frame.');
-    if (interactive) {
-      readlineInterface.prompt();
-    }
+    terminal.setConnection({
+      connected: true,
+      text: 'connected',
+    });
+    terminal.addEvent('info', '[client] Connected. Sending hello frame.');
   });
 
   client.on('disconnected', ({ reconnecting }) => {
-    printLine(reconnecting
+    terminal.setConnection({
+      connected: false,
+      text: reconnecting ? 'reconnecting' : 'disconnected',
+    });
+    terminal.addEvent('info', reconnecting
       ? '[client] Disconnected. Reconnect is enabled.'
       : '[client] Disconnected.');
-
-    if (interactive) {
-      readlineInterface.prompt();
-    }
   });
 
   client.on('reconnect_scheduled', ({ attempt }) => {
-    printLine(`\[client] Reconnect attempt ${attempt} starting.`);
+    terminal.addEvent('info', `[client] Reconnect attempt ${attempt} starting.`);
   });
 
   client.on('error', (error) => {
-    printLine(`\[client:error] ${error.message}`);
-    if (interactive) {
-      readlineInterface.prompt();
-    }
+    terminal.addEvent('error', `[client:error] ${error.message}`);
   });
 
   client.connect();
 
   if (interactive) {
-    printHelp();
     readlineInterface.setPrompt('socket> ');
-    readlineInterface.prompt();
+    terminal.showHelp();
+  } else {
+    printHelp();
   }
 
   async function handleInputLine(line) {
     const input = line.trim();
 
     if (!input) {
-      if (interactive) {
-        readlineInterface.prompt();
-      }
+      terminal.render();
       return;
     }
 
@@ -144,12 +160,16 @@ export async function runCli({ client, localFileService }) {
       });
 
       if (!sent) {
-        printLine('[client:error] Client is not currently connected.');
+        terminal.addEvent('error', '[client:error] Client is not currently connected.');
+      } else {
+        terminal.markLocalCommand(`message ${Date.now()}`, {
+          status: 'sent',
+          detail: 'chat message queued for the server',
+          output: input,
+          command: 'chat',
+        });
       }
 
-      if (interactive) {
-        readlineInterface.prompt();
-      }
       return;
     }
 
@@ -158,16 +178,23 @@ export async function runCli({ client, localFileService }) {
     try {
       switch (command) {
         case 'help':
-          printHelp();
+          if (interactive) {
+            terminal.showHelp();
+          } else {
+            printHelp();
+          }
           break;
-        case 'list':
+        case 'list': {
+          terminal.markCommandPending(`/list ${args[0] ?? '.'}`, 'list');
           client.send({
             type: 'command',
             command: 'list',
             path: args[0] ?? '.',
           });
           break;
+        }
         case 'read':
+          terminal.markCommandPending(`/read ${args[0] ?? ''}`, 'read');
           client.send({
             type: 'command',
             command: 'read',
@@ -175,6 +202,7 @@ export async function runCli({ client, localFileService }) {
           });
           break;
         case 'search':
+          terminal.markCommandPending(`/search ${args.join(' ')}`, 'search');
           client.send({
             type: 'command',
             command: 'search',
@@ -182,6 +210,7 @@ export async function runCli({ client, localFileService }) {
           });
           break;
         case 'info':
+          terminal.markCommandPending(`/info ${args[0] ?? ''}`, 'info');
           client.send({
             type: 'command',
             command: 'info',
@@ -191,16 +220,18 @@ export async function runCli({ client, localFileService }) {
         case 'upload': {
           const filename = args[0];
           const upload = await localFileService.readUpload(filename);
+          terminal.markCommandPending(`/upload ${filename ?? ''}`, 'upload');
           client.send({
             type: 'command',
             command: 'upload',
             filename,
             contentBase64: upload.contentBase64,
           });
-          printLine(`\[client] Upload queued for ${filename}.`);
+          terminal.addEvent('info', `[client] Upload queued for ${filename}.`);
           break;
         }
         case 'download':
+          terminal.markCommandPending(`/download ${args[0] ?? ''}`, 'download');
           client.send({
             type: 'command',
             command: 'download',
@@ -208,6 +239,7 @@ export async function runCli({ client, localFileService }) {
           });
           break;
         case 'delete':
+          terminal.markCommandPending(`/delete ${args[0] ?? ''}`, 'delete');
           client.send({
             type: 'command',
             command: 'delete',
@@ -219,23 +251,26 @@ export async function runCli({ client, localFileService }) {
           readlineInterface.close();
           return;
         default:
-          printLine(`\[client:error] Unknown command "${command}".`);
+          terminal.markLocalCommand(input, {
+            status: 'error',
+            detail: 'unknown command',
+            output: `Unknown command "${command}".`,
+            command,
+          });
           break;
       }
     } catch (error) {
-      printLine(`\[client:error] ${error.message}`);
+      terminal.addEvent('error', `[client:error] ${error.message}`);
     }
 
-    if (interactive) {
-      readlineInterface.prompt();
-    }
+    terminal.render();
   }
 
   readlineInterface.on('line', (line) => {
     inputQueue = inputQueue
       .then(() => handleInputLine(line))
       .catch((error) => {
-        printLine(`\[client:error] ${error.message}`);
+        printLine(`[client:error] ${error.message}`);
       });
   });
 
@@ -251,5 +286,3 @@ export async function runCli({ client, localFileService }) {
     }, 1200);
   });
 }
-
-
